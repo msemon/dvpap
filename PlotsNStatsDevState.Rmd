@@ -1,0 +1,561 @@
+---
+title: "DevVarShh"
+author: "Luke Hayden"
+date: "July 30, 2016"
+output:
+  pdf_document: default
+  html_document: default
+  
+---
+
+
+
+##Setup
+
+Here, required packages and files are loaded
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+library("ggplot2")
+library("reshape2")
+library("dplyr")
+library("tidyr")
+library("Rmisc")
+
+
+jaw <- "md"# For analyses of upper jaw, a value of "mx" should be used, for lower, "md" should be used
+
+```
+
+
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+mxstg <- read.table(paste(jaw, "FVBDUHiCD1scores20.txt", sep=""))
+
+mxstg$nid <- as.factor(paste(mxstg$Weight, mxstg$Clutch, sep=""))
+
+mxstg <- subset(mxstg, mxstg$Strain != "CD1")
+```
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+lf <- Sys.glob("predic*")
+
+combdat <- data.frame(matrix(nrow=0,ncol=20))
+
+for (i in lf){
+  lht <- read.table(i)
+  lht$sd <- substr(i,(nchar(i)-6), (nchar(i)-4))
+  combdat <-rbind(combdat, lht)
+}
+
+
+ndat <- subset(combdat, combdat$sd == "001")
+ndat05 <- subset(combdat, combdat$sd == "005")
+ndat15 <- subset(combdat, combdat$sd == "015")
+
+ndat$dev05 <- ndat05$dev
+ndat$dev15 <- ndat15$dev
+
+
+names(ndat)[names(ndat) == 'dev'] <- 'dev01'
+ndat$ident <- seq(1, nrow(ndat))
+
+ndat$nid <- as.factor(paste(ndat$Weight, ndat$Litter, sep=""))
+
+mxstgp <- left_join(mxstg, ndat, by="nid")
+
+
+
+write.csv(ndat, file="ndat.csv")
+
+write.csv(mxstgp, file=paste(jaw, "dat.csv", sep=""))
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+
+mxstgp2 <- read.csv( file=paste(jaw, "datagood.csv", sep=""))
+
+```
+
+
+#Model age vs weight
+
+Below, we the relationship between embryo weight and computed developmental age for three different values of sd.litter.preg. These are seen in the paper as supp. methods fig1.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+
+meascomp <- gather(mxstgp2, key="variable", value="cdpc", c("dev01", "dev05", "dev15")) %>%
+  filter(variable != "dev15")
+
+
+meascomp$devlev <- case_when(
+  meascomp$variable == "dev01" ~ "permissive model",
+  meascomp$variable == "dev05" ~ "realistic model",
+  meascomp$variable == "dev15" ~ "sd.litter.preg = 0.15")
+
+
+
+(p=ggplot(meascomp, aes(x=Weight.y, y=cdpc, colour=Strain.x, label=nid.x))+
+  geom_point() + 
+  facet_wrap(Strain.x~devlev)+
+  scale_colour_manual(values=c("red3",  "cornflowerblue"), name="Strain") +
+  xlab("Computed developmental age (cdpc)")+
+  ylab("Embryo Weight (mg)") +
+  theme_bw()
+)
+  
+
+
+
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+names(mxstgp2)[names(mxstgp2) == 'Strain.x'] <- 'Strain'
+
+names(mxstgp2)[names(mxstgp2) == 'Weight.y'] <- 'Weight'
+
+mxstgmelted <- gather(mxstgp2, key="variable", value="value", c("shh_R2_spot","shh_M1_spot","cap_transition","shboob"))
+
+mxstgmelted$variable[mxstgmelted$variable == "shh_R2_spot"] <- "R2 Shh expression"
+mxstgmelted$variable[mxstgmelted$variable == "shh_M1_spot"] <- "M1 Shh expression"
+mxstgmelted$variable[mxstgmelted$variable == "cap_transition"] <- "Cap transition"
+mxstgmelted$variable[mxstgmelted$variable == "shboob"] <- "Anterior protrusion"
+
+mxstg <- mxstgp2
+```
+
+
+#Logistic regression
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+subsmxstg <- subset(mxstg, Strain!= "CD1")
+subsmxstg$shh_R2_spot <- factor(subsmxstg$shh_R2_spot > 0)
+subsmxstg$Strain <- factor(subsmxstg$Strain)
+
+
+mxlogitR2 <- glm(shh_R2_spot ~ Weight + Strain, data = subsmxstg, family = "binomial")
+summary(mxlogitR2)
+
+subsmxstg$shh_M1_spot <- factor(subsmxstg$shh_M1_spot > 0)
+mxlogitM1 <- glm(shh_M1_spot ~ Weight + Strain, data = subsmxstg, family = "binomial")
+summary(mxlogitM1)
+
+subsmxstg$cap_transition <- factor(subsmxstg$cap_transition > 0)
+mxlogitCAP <- glm(cap_transition ~ Weight + Strain, data = subsmxstg, family = "binomial")
+summary(mxlogitCAP)
+
+mxlogitSHB <- glm(shboob ~ Weight + Strain, data = subsmxstg, family = "binomial")
+summary(mxlogitSHB)
+
+```
+
+
+#Character state progression graphs
+
+Following code is for the production of graphs relating to the progression of scored character states with respect to developmental time. 5
+
+
+- Supplementary Figure 5 (realistic estimation only)
+- Supplementary Figure 6 (realistic estimation only)
+- Supplementary Methods Figure 2 
+- Supplementary Methods Figure 3 
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+  
+
+#mxstgmelted <- melt(mxstg, id.vars=c("ID", "Strain", "Age", "Weight", "Clutch", "shh_M2_spot", "M1_spot_split_LR", "Total_state", "stateord", "Symmetry", "groupwt", "mediantemps", "Date", "X", "nid"))
+  
+mxstgmelted$value[mxstgmelted$Strain == "FVB"] <- mxstgmelted$value[mxstgmelted$Strain == "FVB"] +0.05
+mxstgmelted$value[mxstgmelted$Strain == "DUHi"] <- mxstgmelted$value[mxstgmelted$Strain == "DUHi"] -0.05
+mxstgmelted$variable <- as.character(mxstgmelted$variable)
+
+mxstgmelted$variable[mxstgmelted$variable == "shh_R2_spot"] <- "R2 Shh expression"
+mxstgmelted$variable[mxstgmelted$variable == "shh_M1_spot"] <- "M1 Shh expression"
+mxstgmelted$variable[mxstgmelted$variable == "cap_transition"] <- "Cap transition"
+mxstgmelted$variable[mxstgmelted$variable == "shboob"] <- "Anterior protrusion"
+mxstgmelted$variable <- factor(mxstgmelted$variable, levels= c("R2 Shh expression","M1 Shh expression", "Cap transition", "Anterior protrusion") )
+
+
+mmxstgmelted <- gather(mxstgmelted, key="agemeasure", value="oldness", c("Age","Weight", "dev01", "dev05", "dev15"))
+
+
+(p <- ggplot(mmxstgmelted, aes(x=oldness,y=value,color=Strain,shape=Strain)) +
+  geom_point(size=1.5) + 
+  facet_grid(variable~agemeasure, scales= "free") +  
+  scale_y_continuous(breaks=c(0,1,2)) + 
+  scale_colour_manual(values=c("red3",  "cornflowerblue")) +
+  xlab("Computed developmental age (cdpc)")+
+  ylab("") +
+  theme_bw()+ 
+  ggtitle(paste(jaw, "character progression"))
+)
+
+ggsave(plot=p,height=10, width=14, file=paste(jaw,"charprog.pdf" ,sep="") )
+
+
+
+(p <- ggplot(mxstgmelted, aes(x=dev05,y=value,color=Strain,shape=Strain)) +
+  geom_point(size=1.5) + 
+  facet_wrap(~variable,ncol=1, scales= "free") +  
+  scale_y_continuous(breaks=c(0,1,2)) + 
+  scale_colour_manual(values=c("red3",  "cornflowerblue")) +
+  xlab("Computed developmental age (cdpc)")+
+  ylab("") +
+  theme_bw()+ 
+  ggtitle(paste(jaw, "character progression"))
+)
+
+ggsave(plot=p,height=10, width=14, file=paste(jaw,"charprog.pdf" ,sep="") )
+
+
+
+(p <- ggplot(mxstgmelted, aes(x=dev05,y=value,color=Strain,shape=Strain)) +
+  geom_point(size=1.5) + 
+  facet_wrap(~variable,ncol=1, scales= "free") +  
+  scale_y_continuous(breaks=c(0,1,2)) + 
+  scale_colour_manual(values=c("red3",  "cornflowerblue")) +
+  xlab("Computed developmental age (cdpc)")+
+  ylab("") +
+  theme_bw()+ 
+  ggtitle(paste(jaw, "character progression"))+
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))+ 
+  theme(panel.spacing = unit(1, "lines"),    
+        plot.background = element_rect(fill = "transparent",colour = "transparent") ,  
+        legend.box.background = element_rect(fill = "transparent",colour = "transparent") )
+    )
+
+
+
+ggsave(plot=p,height=8, width=8,device="png", file="charprogpres.png", bg = "transparent" )
+
+
+
+```
+
+
+
+#Total state, one panel by strain
+
+The following code is for the production of plots of total developmental state and its changes over developmental time. 
+
+- Figure 3 (realistic only)
+- Supplementary Figure 7 (realistic only)
+- Supplementary Methods Figure 4 
+- Supplementary Methods Figure 5 
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+
+m2 <- data.frame(id =mxstg$ID, totstat=mxstg$Total_state,Strain=mxstg$Strain, stateord =mxstg$stateord, weight=mxstg$Weight,Age=mxstg$Age, dev01=mxstg$dev01, dev05= mxstg$dev05, dev15=mxstg$dev15)
+d <- subset(m2, m2$Strain =="DUHi" )
+y=levels(m2$stateord)
+f <- subset(m2, m2$Strain =="FVB")
+
+i <- d$stateord %in% f$stateord
+d2 <- subset(d, !i)
+
+
+i <- f$stateord %in% d$stateord
+f2 <- subset(f, !i)
+
+m3 <- data.frame(
+  y=levels(m2$stateord), 
+  din =y %in% d2$stateord,
+  fin=y %in% f2$stateord,
+  end=max(m2$cdpc),
+  start=min(m2$cdpc)) 
+
+
+m4 <- melt(m3, id.vars=c("y", "end", "start"))
+m4$Strain <- "DUHi"
+m4$Strain[m4$variable == "fin"] <- "FVB"
+
+
+
+m5 <- gather(mxstg, key="agemeasure", value="oldness", c("Age","Weight", "dev01", "dev05", "dev15"))
+
+(p <- ggplot(m5, aes(x=oldness,y=stateord,color=Strain)) +
+  geom_point(size=1) + 
+  facet_grid(Strain~agemeasure, scales="free") + 
+  scale_colour_manual(values=c("red3",  "red3", "cornflowerblue","cornflowerblue"))   +
+  xlab("Computed Embryo Age (cdpc)") +
+  ylab("Embryo overall state") +
+  geom_segment(inherit.aes=FALSE, data=m4, aes(x=start, xend=end, y=y, yend=y, alpha=value, colour=variable, size=10)) +
+  scale_alpha_manual(values=c(0,0.3)) +
+  theme_bw()+
+  theme(legend.position = "none")
+)
+
+
+
+ggsave(plot=p,height=7, width=24, file=paste(jaw,"allstate.pdf" ,sep="") )
+
+(p <- ggplot(mxstg, aes(x=dev05,y=stateord,color=Strain)) +
+  geom_point(size=1) + 
+  facet_wrap(~Strain,ncol=1) + 
+  scale_colour_manual(values=c("red3",  "red3", "cornflowerblue","cornflowerblue"))   +
+  xlab("Computed Embryo Age (cdpc)") +
+  ylab("Embryo overall state") +
+  geom_segment(inherit.aes=FALSE, data=m4, aes(x=start, xend=end, y=y, yend=y, alpha=value, colour=variable, size=10)) +
+  scale_alpha_manual(values=c(0,0.3)) +
+  theme_bw()+
+  theme(legend.position = "none")+ 
+  theme(panel.spacing = unit(1, "lines"),    
+        plot.background = element_rect(fill = "transparent",colour = "transparent") ,  
+        legend.box.background = element_rect(fill = "transparent",colour = "transparent") )
+    )
+
+
+
+ggsave(plot=p,height=6, width=8,device="png", file="totstatepres.png", bg = "transparent" )
+
+
+
+
+ggsave(plot=p,height=7, width=24,device="png", file=paste(jaw,"allstatedev05.png" ,sep="") )
+
+
+ggsave(plot=p,height=7, width=5,device="pdf", file=paste(jaw,"allstatedev05.pdf" ,sep="") )
+
+
+dumx <- subset(mxstg, mxstg$Strain == "DUHi")
+distplotdf <- data.frame()
+
+#for (i in c(1,11,22,33,44,55,66,77,88,99)){
+  
+  
+
+
+for (i in seq(from=1,to=96, by=8)){  
+
+closetochosen <-abs(dumx$dev05[i] - dumx$dev05) <0.25
+closechoices <- subset(dumx, closetochosen)
+closechoices$devdist <- abs(closechoices$shh_R2_spot - dumx$shh_R2_spot[i]) +
+                        abs(closechoices$shh_M1_spot - dumx$shh_M1_spot[i]) +
+                        abs(closechoices$cap_transition - dumx$cap_transition[i]) +
+                        abs(closechoices$shboob - dumx$shboob[i]) 
+closechoices$chosendev <- dumx$dev05[i]
+closechoices$chosenso <- dumx$stateord[i]
+closechoices$dist <- abs(closechoices$dev05 -closechoices$chosendev)
+closechoices$num <- i
+distplotdf <- rbind(distplotdf, closechoices)
+
+
+}
+
+
+````
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+(p=ggplot(distplotdf, aes(x=dev05,y=stateord)) +
+  geom_point(size=1, shape=16, aes(colour=devdist)) + 
+  xlab("Computed Embryo Age (cdpc)") +
+  ylab("Embryo overall state") +
+  scale_alpha_manual(values=c(0,0.3)) +
+  theme_bw()+
+  geom_segment(data=distplotdf, aes(x=dev05, y=stateord, xend=chosendev, yend=chosenso, colour=devdist))+
+  scale_colour_gradient2(low = "forest green",mid="cornflower blue", high = "red3", midpoint = 1, name="Developmental \ndistance")+
+  facet_wrap(~num)+
+  theme(  strip.background = element_blank(),
+  strip.text.x = element_blank())+ 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+ 
+  theme(panel.spacing = unit(1, "lines"),    
+        plot.background = element_rect(fill = "transparent",colour = "transparent") ,  
+        legend.box.background = element_rect(fill = "transparent",colour = "transparent") )
+    )
+
+
+(p <- ggplot(mxstg, aes(x=dev05,y=stateord, fill=Strain)) +
+
+  geom_point( shape=21,size=2, colour="white")+
+  scale_fill_manual(values=c("red3",   "cornflowerblue","cornflowerblue"), guide=F)+
+  geom_point(size=1, shape=16, data=distplotdf, aes(x=dev05,y=stateord,colour=devdist)) + 
+  xlab("Computed Embryo Age (cdpc)") +
+  ylab("Embryo overall state") +
+  scale_alpha_manual(values=c(0,0.3)) +
+  theme_bw()+
+  geom_segment(data=distplotdf, aes(x=dev05, y=stateord, xend=chosendev, yend=chosenso, colour=devdist))+
+  scale_colour_gradient2(low = "forest green",mid="yellow", high = "orange", midpoint = 1, name="Developmental \ndistance")+
+  facet_wrap(~num)+
+  theme(  strip.background = element_blank(),
+  strip.text.x = element_blank())+ 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))+ 
+  theme(panel.spacing = unit(1, "lines"),    
+        plot.background = element_rect(fill = "transparent",colour = "transparent") ,  
+        legend.box.background = element_rect(fill = "transparent",colour = "transparent") )
+    )
+
+
+
+
+ggsave(plot=p,height=6, width=10,device="png", file="closetofig.png", bg = "transparent" )
+
+````
+
+
+
+
+#Weight and dev state dist matrices for DUHI
+
+The following code is for the creation of distance matrices of intrapair developmental state variation. These are used for the calculation of overall developmental variability per strain and for the creation of plots of developmental variability over time. 
+
+
+
+- Figure 6 A & B (realistic only)
+- Supplementary Figure 10 A & B (realistic only)
+- Supplementary Methods Figure 6
+- Supplementary Methods Figure 7
+- Supplementary Methods Figure 8
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+stgmin <- select(mxstg, c("ID","Strain", "shh_R2_spot", "shh_M1_spot", "cap_transition", "shboob", "Weight", "dev01", "dev05", "dev15"))
+
+agethresh <- c(10,0.25,0.25,0.25)
+#agethresh <- c(5,0.1,0.1,0.1)
+
+
+plotlist <- list()
+plotlistbox <- list()
+
+
+for (i in 1:4){
+  
+
+stgmin$agemeas <- stgmin[,6+i]
+varname <- colnames(stgmin)[6+i]
+  
+mxsd <-subset(stgmin, Strain=="DUHi")
+
+agedmat <- abs(as.vector(outer(mxsd$agemeas, mxsd$agemeas, "-")))
+r2dmat <- abs(as.vector(outer(mxsd$shh_R2_spot, mxsd$shh_R2_spot, "-")))
+m1dmat <- abs(as.vector(outer(mxsd$shh_M1_spot, mxsd$shh_M1_spot, "-")))
+capdmat <- abs(as.vector(outer(mxsd$cap_transition, mxsd$cap_transition, "-")))
+shbdmat <- abs(as.vector(outer(mxsd$shboob, mxsd$shboob, "-")))
+
+pairmeanage <- as.vector(outer(mxsd$agemeas ,mxsd$agemeas, "+"))/2
+
+#isclose <- agedmat < 0.25
+fac <- 0.05
+isclose <- agedmat < agethresh[i]
+alldmat<- r2dmat + m1dmat +capdmat + shbdmat
+
+dutimevar <- subset(data.frame(agedmat, r2dmat, m1dmat, capdmat, shbdmat, alldmat, pairmeanage, Strain="DUHi"), isclose)
+
+
+mxsd <- subset(stgmin, Strain=="FVB")
+
+agedmat <- abs(as.vector(outer(mxsd$agemeas, mxsd$agemeas, "-")))
+r2dmat <- abs(as.vector(outer(mxsd$shh_R2_spot, mxsd$shh_R2_spot, "-")))
+m1dmat <- abs(as.vector(outer(mxsd$shh_M1_spot, mxsd$shh_M1_spot, "-")))
+capdmat <- abs(as.vector(outer(mxsd$cap_transition, mxsd$cap_transition, "-")))
+shbdmat <- abs(as.vector(outer(mxsd$shboob, mxsd$shboob, "-")))
+
+pairmeanage <- as.vector(outer(mxsd$agemeas ,mxsd$agemeas, "+"))/2
+
+#isclose <- agedmat < 0.25
+isclose <- agedmat <agethresh[i]
+alldmat<- r2dmat + m1dmat +capdmat + shbdmat
+
+fvtimevar <- subset(data.frame(agedmat, r2dmat, m1dmat, capdmat, shbdmat, alldmat, pairmeanage, Strain= "FVB"), isclose)
+timevar <- rbind(dutimevar, fvtimevar)
+
+(p<-ggplot(data=timevar, aes(x=pairmeanage, y=alldmat, colour=Strain)) +
+  geom_point(size=2, alpha =0.0) + 
+  stat_smooth(method=loess,size=1.5) +
+#  ylim(-0.5,2)+ 
+  scale_colour_manual(values=c("red3", "cornflowerblue")) +
+  ylab("Mean Developmental State Difference") +
+  xlab("Computed Embryo Age (cdpc)") + 
+#  coord_fixed(ratio=40)+
+  theme_bw()+
+  ggtitle(label=paste("Time series, age measure:", varname), 
+                subtitle=paste("threshold:" ,agethresh[i]))+ 
+  theme(plot.background = element_rect(fill = "transparent",colour = "transparent") ,  
+        legend.box.background = element_rect(fill = "transparent",colour = "transparent") ))
+    
+
+p
+
+
+plotlist[[i]] <- p
+
+
+
+wiltest <- wilcox.test(timevar$alldmat[timevar$Strain == "DUHi"],timevar$alldmat[timevar$Strain == "FVB"] )
+wilpval <-wiltest$p.value  #round(wiltest$p.value, 9)
+n <- nrow(timevar)
+
+(p<-ggplot(data=timevar, aes(y=alldmat,x=Strain, fill=Strain)) +
+  geom_boxplot(outlier.shape = NA) + 
+#  ylim(-0.5,2)+ 
+  scale_fill_manual(values=c("red3", "cornflowerblue")) +
+  ylab("Mean Developmental State Difference") +
+  xlab("Strain") + 
+  theme_bw()+
+  ggtitle(label=paste("Overall variability, age measure:", varname), 
+                subtitle=paste("threshold:" ,agethresh[i], "wilcoxon test pvalue=", wilpval, "\n n=", n))+ 
+  theme(plot.background = element_rect(fill = "transparent",colour = "transparent") ,  
+        legend.box.background = element_rect(fill = "transparent",colour = "transparent") ))
+    
+
+
+
+plotlistbox[[i]] <- p
+
+}
+
+
+
+
+#For variable 
+pdf(paste(jaw,fac, "timevar.pdf" ,sep=""),height=18, width=7)
+multiplot(plotlist=plotlist, cols=1)
+dev.off()
+
+
+pdf(paste(jaw,fac,"allvar.pdf" ,sep=""),height=10, width=10)
+multiplot(plotlist=plotlistbox, cols=2)
+dev.off()
+
+
+ggsave(plot=plotlist[[3]],height=4, width=7,device="png", file=paste(jaw,fac,"timevardev05.png" ,sep="") )
+
+ggsave(plot=plotlist[[3]],height=4, width=7,device="pdf", file=paste(jaw,fac,"timevardev05.pdf" ,sep="") )
+
+
+
+ggsave(plot=plotlist[[3]],height=4, width=6,device="png", file="timevar05.png", bg = "transparent" )
+
+
+
+plotlist[[3]]
+
+ggsave(plot=plotlistbox[[3]],height=3, width=4,device="pdf", file=paste(jaw,"allvardev05.pdf" ,sep="") )
+
+
+plotlistbox[[3]]
+
+
+
+
+
+ggsave(plot=plotlistbox[[3]],height=3, width=4,device="png", file=paste(jaw,"allvardev05.png" ,sep=""), bg = "transparent" )
+
+
+ggsave(plot=plotlistbox[[3]],height=4, width=6,device="png", file="timevarbox05.png", bg = "transparent" )
+```
+
+
+
+
