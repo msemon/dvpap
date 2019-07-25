@@ -1,0 +1,118 @@
+---
+title: "boxmorph"
+output: html_document
+---
+
+This short script is to perform the analyses of 
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+````
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+bmeasures <- read.csv("bmeasures2.csv")
+````
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+updu <- subset(bmeasures, bmeasures$Strain == "DUHi"  & bmeasures$Jaw == "Upper molar")
+
+lodu <- subset(bmeasures, bmeasures$Strain == "DUHi"  & bmeasures$Jaw == "Lower molar")
+
+upfv<- subset(bmeasures, bmeasures$Strain == "FVB" & bmeasures$Jaw == "Upper molar")
+
+lofv <- subset(bmeasures, bmeasures$Strain == "FVB"  & bmeasures$Jaw == "Lower molar")
+
+````
+
+#t-tests upper molars
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+t.test(updu$totlen, upfv$totlen) #total length
+
+t.test(updu$prem1, upfv$prem1)#pre m1
+
+t.test(updu$posm1, upfv$posm1)#post m1 length
+
+t.test(updu$spolen1, upfv$spolen1)#spot length
+
+
+````
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+t.test(lodu$totlen, lofv$totlen)#total length
+
+t.test(lodu$prem1, lofv$prem1)#pre m1
+
+t.test(lodu$posm1, lofv$posm1)#post m1 length
+
+t.test(lodu$spolen1, lofv$spolen1)#spot length
+
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+mbmeasures <- gather(bmeasures, key="measure", value="length", c("totlen",  "posm1", "prem1"))
+
+
+mbmeasures <- subset(mbmeasures, mbmeasures$Weight > 180 & mbmeasures$Weight <250)
+
+
+
+mbmeasures$meas2 <- "Post-M1 spot length"
+mbmeasures$meas2[mbmeasures$measure == "prem1"] <- "Pre-M1 spot length"
+mbmeasures$meas2[mbmeasures$measure == "totlen"] <- "Total dental lamina length"
+
+mbmeasures$meas2 <- paste0(mbmeasures$Jaw, "\n", mbmeasures$meas2)
+mbmeasures$meas3 <- factor(mbmeasures$meas2, levels=  c( "Upper molar\nPre-M1 spot length"        ,        "Upper molar\nPost-M1 spot length"  ,  "Upper molar\nTotal dental lamina length",     "Lower molar\nPre-M1 spot length" , "Lower molar\nPost-M1 spot length"    ,    "Lower molar\nTotal dental lamina length"))
+                             
+                             
+                             
+
+
+p=ggplot(mbmeasures, aes(x=Strain, fill=Strain, y=length))+
+  geom_boxplot()+
+  theme_bw()+
+  scale_fill_manual(values=c("red3", "cornflower blue"))+
+  ylab("Length (μm)")+
+  facet_wrap(~meas3,  scales="free")+
+  theme(legend.position = "none")
+
+
+ggsave(plot=p, device="pdf", filename = "boxmeas.pdf", width=6, height=6)
+
+````
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+plotlist <- list()
+
+(p1 <- ggplot(mdmeasures, aes(x=Strain, fill=Strain, y=posm1))+
+  geom_boxplot()+
+  theme_bw()+
+  scale_fill_manual(values=c("red3", "cornflower blue"))+
+  ylab("Length (μm)")
+  
+  )
+
+
+
+````
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+plotlist[1]
+
+multiplot(plotlist)
+
+````
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+
+````

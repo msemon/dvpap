@@ -1,0 +1,144 @@
+---
+title: "Enrichment_plotting"
+author: "Luke Hayden"
+output: html_document
+---
+
+This script is to create plots of differential gene expression between DUHi & FVB
+
+- Figure 4N
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r reads, include=TRUE}
+#library("xlsx")
+library("ggplot2")
+library("dplyr")
+library("tidyr")
+library("tibble")
+
+
+df <- read.csv("FVB-DUHi paper.csv",dec=",",sep=";",h=T)
+
+list <- read.csv("list.csv",h=F,sep=",")
+
+dflist=df[toupper(df$X)%in%toupper(list$V2),]
+
+names(dflist)[names(dflist) == 'X'] <- 'gene'
+dflist$fc <- exp(dflist$log2FC)
+
+
+
+expvars = colnames(df)[2:13]
+
+nexp <- dflist[,1:13] %>%
+  textshape::column_to_rownames("gene") %>%
+  as.matrix()
+
+nexp <- nexp/rowMeans(nexp) 
+
+nex <-   as.data.frame(nexp) %>%
+  rownames_to_column("gene") %>%
+  gather(key="sample", value="nexp", expvars) %>%
+  mutate(gene= tolower(gene))
+  
+
+
+
+colnames(list) <- c("dir", "gene", "pathway")
+list$gene <- tolower(list$gene)
+list$dp <- paste0(list$dir, list$pathway)
+
+
+pgxp <- dflist %>%
+  mutate(gene= tolower(gene))%>%
+  gather(key="sample", value="exp", expvars) %>%
+  left_join(list, by="gene") %>%
+  left_join(nex, by = c("gene", "sample"))
+
+
+
+pgxp$strain <- dplyr::case_when(grepl("FVB", pgxp$sample) ~"FVB",
+                                grepl("DUHi", pgxp$sample) ~"DUHi"
+                                )
+                      
+                      
+pgxp$gdir <- paste0(substr(pgxp$dir, 1,1), pgxp$gene)
+
+pgxp$patheff <- pgxp$nexp
+pgxp$patheff[pgxp$dir == "negative"] <- 1/ pgxp$patheff[pgxp$dir == "negative"]
+
+pgxp$sdir <- paste0(substr(pgxp$dir, 1,1), pgxp$strain)
+```
+
+
+
+
+
+
+
+```{r, include=TRUE}
+
+gxp <- dflist %>%
+  mutate(gene= tolower(gene))%>%
+#  gather(key="sample", value="exp", expvars) %>%
+  left_join(list, by="gene")
+
+
+gxp$patheff <- gxp$log2FC
+gxp$patheff[gxp$dir == "negative"] <- - gxp$patheff[gxp$dir == "negative"]
+
+
+anno <- data.frame(text= c("Upregulated\nin DUHi", "Upregulated\nin FVB"), y= c(1.5-1.5), x= c( "repressed \ntarget of pathway",  "activated \ntarget of pathway"))
+
+gxp$dir <- case_when(gxp$dir == "positive" ~ "activated \ntarget of pathway", 
+                     gxp$dir == "negative" ~ "repressed \ntarget of pathway")
+```
+
+
+The following code creates the plot itself
+
+```{r, include=TRUE}
+
+gxp$gene <- factor(gxp$gene, levels= unique(gxp$gene[order(gxp$log2FC)]))
+
+#patheff <- data.frame(y=c(10, -10),dir= c( "negative regulator \nof pathway", "positive regulator \nof pathway"))
+
+
+gxp$patheffl <- case_when(gxp$patheff < 0 ~  "pathway less active in DUHi",
+                          gxp$patheff > 0 ~  "pathway more active in DUHi")
+
+gxp$ystart <- 0
+gxp$yend <- case_when(gxp$log2FC > 0 ~ 1.97, 
+                      gxp$log2FC <0 ~ -1.97)
+
+(
+  p=ggplot(gxp, aes(y=log2FC, x=gene, fill= dir))+
+#  geom_segment(aes(color=patheffl, x= gene, xend=gene),size=5, inherit.aes=F, y=-10, yend=10)+
+  geom_segment(aes(color=patheffl,x= gene, xend=gene, yend=yend, y=ystart),size=5, inherit.aes=F)+
+  geom_segment(aes(x= gene, xend=gene),color="black", size=0.5,alpha=0.1, inherit.aes=F, y=-1.95, yend=1.95)+
+  geom_point(shape=21)+
+  coord_cartesian(ylim = c(-1.8,1.8), clip="off")+
+#  ylim(-1.8,1.8)+
+  facet_grid(~pathway+dir, space="free", scale="free")+
+  scale_color_manual(values= c( "light blue", "pink"), name= "")+
+  scale_fill_manual(values= c("forest green", "orange"), guide=F)+
+  theme_bw()+
+  ylab("log2 fold change in gene expression\n (DUHi vs FVB)")+
+  xlab("")+  
+  theme(axis.text.x = element_text(angle = 60, hjust=1))+ 
+  geom_hline(yintercept=0, linetype=2)
+  + theme(legend.position="bottom")
+  )
+
+ggsave(plot=p, device="pdf", filename = "pergenetranscriptodvf.pdf", width=8, height=6)
+
+
+#+
+#  geom_label(data=anno, aes(label=text, y=y, x=x), inherit.aes=F)
+```
+
+
