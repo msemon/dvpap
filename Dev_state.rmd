@@ -21,11 +21,58 @@ library("tidyr")
 library("Rmisc")
 
 
-jaw <- "md"# For analyses of upper jaw, a value of "mx" should be used, for lower, "md" should be used
+jaw <- "mx"# For analyses of upper jaw, a value of "mx" should be used, for lower, "md" should be used
 
 ```
 
 
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+mx <- read.csv(paste("mx", "dat.csv", sep=""))
+
+#mx$nid <- as.factor(paste(mx$Weight, mx$Clutch,mx$ID, sep=""))
+
+
+md <- read.csv(paste("md", "dat.csv", sep=""))
+
+#md$nid <- as.factor(paste(md$Weight, md$Clutch,md$ID, sep=""))
+
+
+mx2 <- subset(mx, mx$nid %in% md$nid) 
+mx2 <- subset(mx2, duplicated(mx2$nid) == F) %>%
+  select(nid, Age.dpc.,dev05, Weight.x, shh_R2_spot)
+
+names(mx2)[names(mx2) == 'shh_R2_spot'] <- 'mx_shh_R2_spot'
+
+
+md2 <- subset(md, md$nid %in% mx$nid) 
+md2 <- subset(md2, duplicated(md2$nid) == F) %>%
+  select(nid, Age.dpc., Weight.x, shh_R2_spot)
+
+names(md2)[names(md2) == 'shh_R2_spot'] <- 'md_shh_R2_spot'
+
+
+
+
+mdx <- left_join(md2, select(mx2, -Age.dpc., -Weight.x), by="nid")
+mdx$md_shh_l <- mdx$md_shh_R2_spot != 0
+mdx$mx_shh_l <- mdx$mx_shh_R2_spot != 0
+
+mdx2 <- subset(mdx, mdx$Age > 13.75 & mdx$Age <14.25 & mdx$Weight > 150 & mdx$Weight <230)
+
+
+fisher.test(mdx$md_shh_l, mdx$mx_shh_l)
+
+mmdx <- mdx %>%
+    select(-c(md_shh_l ,mx_shh_l)) %>%
+  gather(key="jawval", value="val", -Weight, -Age, -nid) %>%
+  mutate(logval = val != 0)
+
+
+
+
+```
 
 
 ```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
@@ -77,7 +124,7 @@ write.csv(mxstgp, file=paste(jaw, "dat.csv", sep=""))
 ```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
 
 
-mxstgp2 <- read.csv( file=paste(jaw, "datagood.csv", sep=""))
+mxstgp2 <- read.csv( file=paste(jaw, "datastate.csv", sep=""))
 
 ```
 
