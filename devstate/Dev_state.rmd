@@ -12,7 +12,7 @@ output:
 
 ##Setup
 
-Here, required packages and files are loaded
+Here, required packages and files are loaded.
 ```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
 library("ggplot2")
 library("reshape2")
